@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+*.egg-info/
+.pytest_cache/
+
+# Generated Monte Carlo simulation artifacts
+results/
