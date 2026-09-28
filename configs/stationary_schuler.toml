@@ -1,0 +1,33 @@
+[simulation]
+name = "Stationary INS Error Propagation"
+runs = 50
+seed = 20260924
+sample_period_s = 1.0
+duration_s = 7200.0
+altitude_aiding = true
+output_dir = "results/stationary_schuler"
+
+[scenario]
+name = "stationary"
+origin_lat_deg = 40.0
+origin_lon_deg = -80.0
+origin_hae_m = 250.0
+
+[initial_error]
+position_std = [10.0, 10.0, 5.0]
+velocity_std = [0.1, 0.1, 0.05]
+attitude_std_deg = [0.1, 0.1, 0.2]
+
+[sensors.gyro]
+constant_bias_std = [2.0e-6, 2.0e-6, 2.0e-6]
+fogm_sigma = [1.0e-6, 1.0e-6, 1.0e-6]
+fogm_tau_s = [600.0, 600.0, 600.0]
+angle_random_walk = [5.0e-6, 5.0e-6, 5.0e-6]
+bias_rate_random_walk = [1.0e-7, 1.0e-7, 1.0e-7]
+
+[sensors.accel]
+constant_bias_std = [0.001, 0.001, 0.001]
+fogm_sigma = [5.0e-4, 5.0e-4, 5.0e-4]
+fogm_tau_s = [600.0, 600.0, 600.0]
+velocity_random_walk = [5.0e-4, 5.0e-4, 5.0e-4]
+bias_rate_random_walk = [2.0e-5, 2.0e-5, 2.0e-5]

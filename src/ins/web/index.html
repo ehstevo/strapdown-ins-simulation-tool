@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INS Monte Carlo Studio</title>
+  <style>
+    :root { color-scheme: light; --ink:#14213d; --muted:#5f6c7b; --paper:#f5f7fa; --card:#ffffff; --line:#dbe3ec; --accent:#116466; --accent-dark:#0b4f50; --warn:#a14a00; --error:#a61b1b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.45 Inter, ui-sans-serif, system-ui, sans-serif; }
+    header { background:linear-gradient(120deg, #102a43, #116466); color:#fff; padding:28px max(24px, calc((100% - 1240px)/2)); }
+    header h1 { margin:0; font-size:29px; letter-spacing:-.03em; }
+    header p { margin:5px 0 0; color:#dceff0; max-width:830px; }
+    main { max-width:1240px; margin:24px auto 64px; padding:0 20px; }
+    .toolbar, .card { background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 2px 7px rgb(20 33 61 / .05); }
+    .toolbar { display:flex; align-items:end; gap:12px; flex-wrap:wrap; padding:16px; margin-bottom:18px; }
+    .toolbar label { display:grid; gap:4px; min-width:290px; font-weight:600; }
+    button, select, input { font:inherit; }
+    select, input { border:1px solid #b9c7d6; border-radius:6px; background:#fff; color:var(--ink); padding:7px 8px; min-width:0; }
+    button { border:0; border-radius:6px; padding:9px 13px; color:#fff; background:var(--accent); font-weight:700; cursor:pointer; }
+    button:hover { background:var(--accent-dark); }
+    button.secondary { color:var(--accent-dark); background:#e6f3f1; }
+    button:disabled { cursor:wait; opacity:.6; }
+    .form-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
+    .card { padding:18px; }
+    .card.wide { grid-column:1 / -1; }
+    h2 { margin:0 0 3px; font-size:18px; }
+    .description { margin:0 0 14px; color:var(--muted); }
+    .scalar-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px 14px; }
+    .scalar-grid label { display:grid; gap:3px; color:var(--muted); font-size:12px; }
+    .scalar-grid label span { color:var(--ink); font-weight:650; font-size:13px; }
+    .vector-table { width:100%; border-collapse:collapse; }
+    .vector-table th, .vector-table td { border-bottom:1px solid #edf1f5; padding:7px 5px; text-align:center; }
+    .vector-table th:first-child, .vector-table td:first-child { text-align:left; width:38%; }
+    .vector-table th { color:var(--muted); font-size:12px; font-weight:700; }
+    .vector-table input { width:100%; text-align:right; }
+    .unit { color:var(--muted); font-size:11px; display:block; }
+    .status { display:none; margin:18px 0; border-radius:8px; padding:12px 14px; font-weight:600; }
+    .status.show { display:block; } .status.working { color:#075985; background:#e0f2fe; } .status.error { color:#7f1d1d; background:#fee2e2; } .status.done { color:#14532d; background:#dcfce7; }
+    .results { display:none; margin-top:18px; } .results.show { display:block; }
+    .results img { width:100%; margin-top:12px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .result-links { display:flex; gap:12px; flex-wrap:wrap; } .result-links a { color:var(--accent-dark); font-weight:700; }
+    .run-row { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+    .hint { color:var(--muted); font-size:12px; }
+    .hidden { display:none; }
+    @media (max-width: 820px) { .form-grid { grid-template-columns:1fr; } .scalar-grid { grid-template-columns:1fr; } .card.wide { grid-column:auto; } header { padding:22px 20px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>INS Monte Carlo Studio</h1>
+    <p>Configure a trajectory, initial-condition uncertainty, and inertial sensor error model. The form saves the same TOML configuration used by the command-line simulator.</p>
+  </header>
+  <main>
+    <section class="toolbar" aria-label="Configuration actions">
+      <label><span>Load a built-in study</span><select id="template-select"></select></label>
+      <button class="secondary" id="load-template" type="button">Load Study</button>
+      <button class="secondary" id="zero-errors" type="button">Zero Error Inputs</button>
+      <button class="secondary" id="download-config" type="button">Download TOML</button>
+      <button class="secondary" id="stop-server" type="button">Stop Local Server</button>
+      <span class="hint">All error distributions have a fixed zero mean. State vectors use North / East / Down; IMU vectors use body x / y / z.</span>
+    </section>
+
+    <form id="simulation-form">
+      <section class="form-grid">
+        <article class="card">
+          <h2>Simulation</h2>
+          <p class="description">Monte Carlo ensemble size, time base, and output location.</p>
+          <div class="scalar-grid" id="simulation-fields"></div>
+        </article>
+        <article class="card">
+          <h2>Truth Scenario</h2>
+          <p class="description">Vehicle truth trajectory used to generate ideal IMU measurements.</p>
+          <div class="scalar-grid" id="scenario-fields"></div>
+        </article>
+        <article class="card wide">
+          <h2>Initial Navigation-State Error</h2>
+          <p class="description">Each standard deviation defines an independent run-to-run Gaussian distribution with a fixed zero mean.</p>
+          <table class="vector-table" id="initial-error-table"></table>
+        </article>
+        <article class="card">
+          <h2>Gyroscope Error Model</h2>
+          <p class="description">Body-axis rate errors. ARW is white measurement noise; the bias rate random walk is an unbounded bias state.</p>
+          <table class="vector-table" id="gyro-table"></table>
+        </article>
+        <article class="card">
+          <h2>Accelerometer Error Model</h2>
+          <p class="description">Body-axis specific-force errors. VRW is white measurement noise; the bias rate random walk is an unbounded bias state.</p>
+          <table class="vector-table" id="accel-table"></table>
+        </article>
+        <article class="card wide">
+          <div class="run-row">
+            <div>
+              <h2>Run Simulation</h2>
+              <p class="description">The local server runs the ensemble in the background and writes the report, statistics, and resolved TOML configuration to the chosen output directory.</p>
+            </div>
+            <button id="run-button" type="submit">Run Monte Carlo</button>
+          </div>
+        </article>
+      </section>
+    </form>
+    <div id="status" class="status" role="status"></div>
+    <section id="results" class="results card">
+      <h2>Simulation Result</h2>
+      <div class="result-links" id="result-links"></div>
+      <img id="report-image" alt="Monte Carlo simulation report">
+    </section>
+  </main>
+  <script>
+    const axisLabels = ["x / North", "y / East", "z / Down"];
+    const scalarRows = {
+      simulation: [
+        ["name", "Study Name", "text"], ["runs", "Monte Carlo Runs", "number"], ["seed", "Random Seed", "number"],
+        ["sample_period_s", "Sample Period (s)", "number"], ["duration_s", "Duration (s)", "number"], ["output_dir", "Output Directory", "text"],
+      ],
+      scenario: [
+        ["name", "Trajectory", "select"], ["origin_lat_deg", "Origin Latitude (deg)", "number"], ["origin_lon_deg", "Origin Longitude (deg)", "number"],
+        ["origin_hae_m", "Origin Height Above Ellipsoid (m)", "number"], ["radius_m", "Horizontal Radius (m)", "number", "moving"],
+        ["altitude_amplitude_m", "Altitude Amplitude (m)", "number", "moving"], ["bank_deg", "Circle Bank (deg)", "number", "circle"], ["pitch_deg", "Circle Pitch (deg)", "number", "circle"],
+      ],
+    };
+    const initialRows = [["position_std", "Position Error Standard Deviation", "m"], ["velocity_std", "Velocity Error Standard Deviation", "m/s"], ["attitude_std_deg", "Attitude Error Standard Deviation", "deg"]];
+    const gyroRows = [
+      ["constant_bias_std", "Constant Bias Standard Deviation", "rad/s"],
+      ["fogm_sigma", "FOGM Standard Deviation", "rad/s"], ["fogm_tau_s", "FOGM Correlation Time", "s"],
+      ["angle_random_walk", "Angle Random Walk", "rad/√s"], ["bias_rate_random_walk", "Bias Rate Random Walk", "rad/s/√s"],
+    ];
+    const accelRows = [
+      ["constant_bias_std", "Constant Bias Standard Deviation", "m/s²"],
+      ["fogm_sigma", "FOGM Standard Deviation", "m/s²"], ["fogm_tau_s", "FOGM Correlation Time", "s"],
+      ["velocity_random_walk", "Velocity Random Walk", "m/s/√s"], ["bias_rate_random_walk", "Bias Rate Random Walk", "m/s²/√s"],
+    ];
+    let templates = [];
+    let activeJob = null;
+
+    function makeScalarFields(containerId, rows, section) {
+      const container = document.getElementById(containerId);
+      rows.forEach(([key, label, type, visibility]) => {
+        const labelElement = document.createElement("label");
+        labelElement.dataset.visibility = visibility || "always";
+        const text = document.createElement("span"); text.textContent = label;
+        let input;
+        if (type === "select") {
+          input = document.createElement("select");
+          ["figure_eight", "circle", "stationary"].forEach(name => input.add(new Option(name, name)));
+          input.addEventListener("change", refreshScenarioVisibility);
+        } else {
+          input = document.createElement("input"); input.type = type; input.step = type === "number" ? "any" : undefined;
+        }
+        input.id = `${section}-${key}`;
+        labelElement.append(text, input); container.append(labelElement);
+      });
+    }
+
+    function makeVectorTable(tableId, rows) {
+      const table = document.getElementById(tableId);
+      table.innerHTML = `<thead><tr><th>Parameter</th>${axisLabels.map(axis => `<th>${axis}</th>`).join("")}</tr></thead>`;
+      const body = document.createElement("tbody");
+      rows.forEach(([key, label, unit]) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${label}<span class="unit">${unit}</span></td>`;
+        [0, 1, 2].forEach(axis => { const cell = document.createElement("td"); const input = document.createElement("input"); input.type = "number"; input.step = "any"; input.id = `${tableId}-${key}-${axis}`; cell.append(input); row.append(cell); });
+        body.append(row);
+      });
+      table.append(body);
+    }
+
+    function setScalar(section, key, value) { document.getElementById(`${section}-${key}`).value = value; }
+    function getScalar(section, key, integer = false) { const value = document.getElementById(`${section}-${key}`).value; return integer ? Number.parseInt(value, 10) : (typeof value === "string" && key.includes("name") || key === "output_dir" ? value : Number(value)); }
+    function setVector(table, key, values) { values.forEach((value, axis) => document.getElementById(`${table}-${key}-${axis}`).value = value); }
+    function getVector(table, key) { return [0, 1, 2].map(axis => Number(document.getElementById(`${table}-${key}-${axis}`).value)); }
+
+    function applyConfig(config) {
+      scalarRows.simulation.forEach(([key]) => setScalar("simulation", key, config.simulation[key]));
+      document.getElementById("simulation-altitude_aiding").checked = Boolean(config.simulation.altitude_aiding);
+      scalarRows.scenario.forEach(([key]) => setScalar("scenario", key, config.scenario[key] ?? 0));
+      initialRows.forEach(([key]) => setVector("initial-error-table", key, config.initial_error[key]));
+      gyroRows.forEach(([key]) => setVector("gyro-table", key, config.sensors.gyro[key]));
+      accelRows.forEach(([key]) => setVector("accel-table", key, config.sensors.accel[key]));
+      refreshScenarioVisibility();
+    }
+
+    function formConfig() {
+      const simulation = {};
+      scalarRows.simulation.forEach(([key, , type]) => simulation[key] = getScalar("simulation", key, type === "number" && ["runs", "seed"].includes(key)));
+      simulation.altitude_aiding = document.getElementById("simulation-altitude_aiding").checked;
+      const scenario = {}; scalarRows.scenario.forEach(([key]) => scenario[key] = getScalar("scenario", key));
+      const initial_error = {}; initialRows.forEach(([key]) => initial_error[key] = getVector("initial-error-table", key));
+      const gyro = {}; gyroRows.forEach(([key]) => gyro[key] = getVector("gyro-table", key));
+      const accel = {}; accelRows.forEach(([key]) => accel[key] = getVector("accel-table", key));
+      return {simulation, scenario, initial_error, sensors:{gyro, accel}};
+    }
+
+    function zeroVector() { return [0, 0, 0]; }
+    function zeroErrorConfig() {
+      return {
+        simulation:{name:"Untitled Zero-Error Study", runs:100, seed:0, sample_period_s:0.1, duration_s:360, altitude_aiding:true, output_dir:"results/zero_error_study"},
+        scenario:{name:"figure_eight", origin_lat_deg:0, origin_lon_deg:0, origin_hae_m:0, radius_m:1000, altitude_amplitude_m:100, bank_deg:0, pitch_deg:0},
+        initial_error:{position_std:zeroVector(), velocity_std:zeroVector(), attitude_std_deg:zeroVector()},
+        sensors:{gyro:{constant_bias_std:zeroVector(), fogm_sigma:zeroVector(), fogm_tau_s:[300,300,300], angle_random_walk:zeroVector(), bias_rate_random_walk:zeroVector()}, accel:{constant_bias_std:zeroVector(), fogm_sigma:zeroVector(), fogm_tau_s:[300,300,300], velocity_random_walk:zeroVector(), bias_rate_random_walk:zeroVector()}},
+      };
+    }
+
+    function zeroErrorInputs() {
+      initialRows.forEach(([key]) => setVector("initial-error-table", key, zeroVector()));
+      gyroRows.filter(([key]) => key !== "fogm_tau_s").forEach(([key]) => setVector("gyro-table", key, zeroVector()));
+      accelRows.filter(([key]) => key !== "fogm_tau_s").forEach(([key]) => setVector("accel-table", key, zeroVector()));
+      showStatus("All sampled initial-state and sensor-error magnitudes are now zero.", "done");
+    }
+
+    function refreshScenarioVisibility() {
+      const scenario = document.getElementById("scenario-name").value;
+      document.querySelectorAll("[data-visibility]").forEach(element => {
+        const visibility = element.dataset.visibility;
+        element.classList.toggle("hidden", visibility === "moving" && scenario === "stationary");
+        element.classList.toggle("hidden", visibility === "circle" && scenario !== "circle");
+      });
+    }
+
+    function showStatus(text, kind) { const status = document.getElementById("status"); status.textContent = text; status.className = `status show ${kind}`; }
+    async function post(path, payload) { const response = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)}); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Request failed."); return data; }
+
+    async function downloadConfig() {
+      try { const response = await post("/api/config", formConfig()); const blob = new Blob([response.toml], {type:"application/toml"}); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = response.filename; link.click(); URL.revokeObjectURL(link.href); showStatus("Downloaded validated TOML configuration.", "done"); }
+      catch (error) { showStatus(error.message, "error"); }
+    }
+
+    async function startRun(event) {
+      event.preventDefault();
+      if (activeJob) return;
+      try { const response = await post("/api/run", formConfig()); activeJob = response.job_id; document.getElementById("run-button").disabled = true; document.getElementById("results").classList.remove("show"); showStatus("Preparing truth trajectory and Monte Carlo ensemble…", "working"); pollJob(); }
+      catch (error) { showStatus(error.message, "error"); }
+    }
+
+    async function stopServer() {
+      if (!window.confirm("Stop the local GUI server? Open GUI pages will stop responding.")) return;
+      await fetch("/api/shutdown", {method:"POST"});
+      showStatus("Local GUI server stopped. You may now close this page and terminal.", "done");
+      document.getElementById("run-button").disabled = true;
+    }
+
+    async function pollJob() {
+      const response = await fetch(`/api/jobs/${activeJob}`); const job = await response.json();
+      if (job.state === "queued" || job.state === "running") { showStatus(`Running Monte Carlo realization ${job.completed_runs} of ${job.total_runs}…`, "working"); window.setTimeout(pollJob, 500); return; }
+      document.getElementById("run-button").disabled = false;
+      if (job.state === "failed") { showStatus(job.error || "Simulation failed.", "error"); activeJob = null; return; }
+      showStatus(`Completed. Results written to ${job.output_dir}.`, "done");
+      document.getElementById("result-links").innerHTML = `<a href="${job.report_pdf_url}" target="_blank">Open PDF report</a><a href="${job.config_url}" target="_blank">View resolved TOML</a>`;
+      const image = document.getElementById("report-image"); image.src = `${job.report_png_url}?t=${Date.now()}`; document.getElementById("results").classList.add("show"); activeJob = null;
+    }
+
+    async function initialize() {
+      makeScalarFields("simulation-fields", scalarRows.simulation, "simulation");
+      const aidingLabel = document.createElement("label"); aidingLabel.innerHTML = `<span>Altitude Aiding</span><input id="simulation-altitude_aiding" type="checkbox">`; document.getElementById("simulation-fields").append(aidingLabel);
+      makeScalarFields("scenario-fields", scalarRows.scenario, "scenario"); makeVectorTable("initial-error-table", initialRows); makeVectorTable("gyro-table", gyroRows); makeVectorTable("accel-table", accelRows);
+      const response = await fetch("/api/templates"); const data = await response.json(); templates = data.templates;
+      const select = document.getElementById("template-select"); templates.forEach(template => select.add(new Option(template.label, template.id)));
+      document.getElementById("load-template").addEventListener("click", () => applyConfig(templates.find(template => template.id === select.value).config));
+      document.getElementById("zero-errors").addEventListener("click", zeroErrorInputs);
+      document.getElementById("download-config").addEventListener("click", downloadConfig); document.getElementById("simulation-form").addEventListener("submit", startRun);
+      document.getElementById("stop-server").addEventListener("click", stopServer);
+      applyConfig(zeroErrorConfig());
+      if (!templates.length) showStatus("No TOML templates found in configs/.", "error");
+    }
+    initialize().catch(error => showStatus(error.message, "error"));
+  </script>
+</body>
+</html>
